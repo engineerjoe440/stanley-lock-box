@@ -30,6 +30,13 @@ String inputCode = "   "; // Start with three spaces as empty characters
 const uint8_t ledPin = 13;
 const uint8_t solenoidPin = 12;
 
+void unlock() {
+  // Perform the unlocking operation!
+  digitalWrite(solenoidPin, HIGH);
+  delay(60UL * 1000); // Delay 60 seconds before locking again
+  digitalWrite(solenoidPin, LOW);
+}
+
 void setup() {
   // Setup Pins
   pinMode(ledPin, OUTPUT);
@@ -54,12 +61,11 @@ void loop() {
    * Iteratively accept key inputs, validate them against the static `keyCode`.
    ****************************************************************************/
   char key = keypad.getKey();
-  uint timeCounter = 0;
 
   // Update key-press queue when key is valid
   if (key) {
     // Trim off the first Character and add new key
-    inputCode = inputCode.substring(1, 2) + key;
+    inputCode = inputCode.substring(1, 3) + key;
     Serial.println(inputCode);
 
     // Validate Input Code
@@ -69,11 +75,4 @@ void loop() {
       unlock();
     }
   }
-}
-
-void unlock() {
-  // Perform the unlocking operation!
-  digitalWrite(solenoidPin, HIGH);
-  delay(60 * 1000); // Delay 60 seconds before locking again
-  digitalWrite(solenoidPin, LOW);
 }
