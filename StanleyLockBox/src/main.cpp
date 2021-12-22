@@ -28,8 +28,10 @@ Keypad keypad = Keypad( makeKeymap(keys), pin_rows, pin_column, ROWS, COLS );
 const String keyCode = "1B5";
 String inputCode = "   "; // Start with three spaces as empty characters
 
-const byte knockThreshold = 200;
+byte knockThreshold = 200;
 uint8_t knockCount = 0;
+uint32_t knockResetThresholdPeriod = 0;
+bool keyPadPassed = false;
 
 Servo knockServo;
 
@@ -61,6 +63,24 @@ void promptKnock() {
   knockServo.write(90);
 }
 
+void setThreshold() {
+  const uint8_t num_cnt = 100;
+  uint32_t overall = 0;
+  uint32_t max_mx  = 0;
+  byte mx;
+  for (int i = 0; i < num_cnt; i++) {
+    mx = analogRead(knockPin);
+    overall += mx;
+    max_mx = max(max_mx, mx);
+  }
+  knockThreshold = max(knockThreshold, (overall / num_cnt)); // Average
+  knockThreshold *= 1.12; // 112% of Average
+  knockThreshold = max(knockThreshold, max_mx+4); // Ensure Larger than Max
+  char buffer[255];
+  sprintf(buffer, "Knock Threshold: %d", knockThreshold);
+  Serial.println(buffer);
+}
+
 void flashLED() {
   // Flash LED
   for (uint8_t i = 0; i < 4; i++) {
@@ -83,6 +103,8 @@ void setup() {
   Serial.begin(9600);
   // Make sure there's PLENTY of space... just because
   inputCode.reserve(32);
+  // Determine a Baseline Threshold
+  setThreshold();
   // Flash LED
   flashLED();
 }
@@ -94,9 +116,7 @@ void loop() {
    * Iteratively "listens" for knock sensor input.
    ****************************************************************************/
   char key = keypad.getKey();
-  bool knockDetected = (analogRead(knockPin) >= knockThreshold);
-  bool keyPadPassed = false;
-  Serial.println(knockDetected);
+  byte knockMx = analogRead(knockPin);
 
   // Update key-press queue when key is valid
   if (key) {
@@ -119,13 +139,28 @@ void loop() {
   }
 
   // When Keypad Passed, Count Knocks
-  if (knockDetected && keyPadPassed) {
+  if ((knockMx >= knockThreshold) && keyPadPassed) {
     knockCount++;
     Serial.println(knockCount);
+    delay(200); // ms
+    // Determine a *NEW* Baseline Threshold
+    setThreshold();
+    // Negative Overflow to Access Maximum Value
+    knockResetThresholdPeriod = 0 - 1;
 
     // Validate Knock Count
     if (knockCount == 2) {
       unlock();
     }
+  }
+
+  // Update Threshold On Specific Period After Last Knock
+  if (knockResetThresholdPeriod == 1) {
+    // Determine a *NEW* Baseline Threshold
+    setThreshold();
+    knockResetThresholdPeriod = 0;
+  } else if (knockResetThresholdPeriod > 0) {
+    // Decrement Counter
+    knockResetThresholdPeriod--;
   }
 }
