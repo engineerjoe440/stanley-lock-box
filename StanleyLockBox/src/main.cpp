@@ -74,7 +74,7 @@ void setThreshold() {
     max_mx = max(max_mx, mx);
   }
   knockThreshold = max(knockThreshold, (overall / num_cnt)); // Average
-  knockThreshold *= 1.12; // 112% of Average
+  knockThreshold *= 1.08; // 108% of Average
   knockThreshold = max(knockThreshold, max_mx+4); // Ensure Larger than Max
   char buffer[255];
   sprintf(buffer, "Knock Threshold: %d", knockThreshold);
