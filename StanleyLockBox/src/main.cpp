@@ -142,7 +142,9 @@ void loop() {
   if ((knockMx >= knockThreshold) && keyPadPassed) {
     knockCount++;
     Serial.println(knockCount);
+    digitalWrite(ledPin, LOW);
     delay(200); // ms
+    digitalWrite(ledPin, HIGH);
     // Determine a *NEW* Baseline Threshold
     setThreshold();
     // Negative Overflow to Access Maximum Value
