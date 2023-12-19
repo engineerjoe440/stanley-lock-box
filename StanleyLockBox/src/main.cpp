@@ -1,6 +1,6 @@
 /*******************************************************************************
  * StanleyLockBox
- * Joe Stanley | Stanley Solutions | 2022
+ * Joe Stanley | Stanley Solutions | 2023
  ******************************************************************************/
 
 #include <Arduino.h>
@@ -8,6 +8,11 @@
 #include <Keypad.h>
 #include <Servo.h>
 #include <TM1637.h>
+#include <Wire.h>
+#include <cww_MorseTx.h>
+#include <DFRobot_QMC5883.h>
+#include "common.h"
+#include "fsm.h"
 
 const byte ROWS = 4; //four rows
 const byte COLS = 4; //four columns
@@ -26,40 +31,24 @@ byte pin_column[COLS] = {7, 6, 5, 4}; //connect to the column pinouts of the key
 
 Keypad keypad = Keypad( makeKeymap(keys), pin_rows, pin_column, ROWS, COLS );
 
-const String keyCode = "1B5";
 String inputCode = "   "; // Start with three spaces as empty characters
 
 byte knockThreshold = 200;
 uint8_t knockCount = 0;
 uint32_t knockResetThresholdPeriod = 0;
-bool keyPadPassed = false;
-bool binaryInPassed = false;
 
 Servo knockServo;
 
 // Instantiation and pins configurations
 // Pin 3 - > DIO
 // Pin 2 - > CLK
-TM1637 ledsegment(52, 53);
+TM1637 ledSegment(52, 53);
 
-// Constant Pin Definitions
-const uint8_t ledPin = 13;
-const uint8_t solenoidPin = 12;
-const uint8_t servoPin = 9;
-const uint8_t knockPin = 0;
-const uint8_t binary1Pin = 24;
-const uint8_t binary2Pin = 25;
-const uint8_t binary4Pin = 22;
-const uint8_t binary8Pin = 23;
+DFRobot_QMC5883 compass(&Wire, /*I2C addr*/QMC5883_ADDRESS);
 
-void unlock() {
-  Serial.println("Unlocking Box!");
-  // Perform the unlocking operation!
-  knockServo.write(0);
-  digitalWrite(solenoidPin, HIGH);
-  delay(60UL * 1000); // Delay 60 seconds before locking again
-  digitalWrite(solenoidPin, LOW);
-}
+#define CW_SPEED 15
+
+cww_MorseTx morse(morseBeepPin, CW_SPEED);
 
 void promptKnock() {
   // "Play" a Knock Sound on the Servo
@@ -92,69 +81,20 @@ void setThreshold() {
   Serial.println(buffer);
 }
 
-void flashLED() {
-  // Flash LED
-  for (uint8_t i = 0; i < 4; i++) {
-    digitalWrite(ledPin, HIGH);
-    delay(100); // milliseconds
-    digitalWrite(ledPin, LOW);
-    delay(100); // milliseconds
-  }
-  digitalWrite(ledPin, HIGH); // Leave On!
+float evaluateHeading(void) {
+  sVector_t mag = compass.readRaw();
+  compass.getHeadingDegrees();
+  Serial.print("Heading (degrees): ");
+  Serial.println(mag.HeadingDegress);
+
+  return mag.HeadingDegress;
 }
 
-uint8_t readBinarySwitches() {
-  // Read Switches
-  uint8_t result = 0;
-  if (!digitalRead(binary1Pin)) { result += 1; }
-  if (!digitalRead(binary2Pin)) { result += 2; }
-  if (!digitalRead(binary4Pin)) { result += 4; }
-  if (!digitalRead(binary8Pin)) { result += 8; }
-  return result;
-}
-
-void setup() {
-  // Setup Pins
-  pinMode(ledPin, OUTPUT);
-  pinMode(solenoidPin, OUTPUT);
-  pinMode(binary1Pin, INPUT);
-  pinMode(binary2Pin, INPUT);
-  pinMode(binary4Pin, INPUT);
-  pinMode(binary8Pin, INPUT);
-  // Setup Servo
-  knockServo.attach(servoPin);
-  knockServo.write(0);
-  ledsegment.init();           // Initializes the display
-  ledsegment.setBrightness(3); // Set brightness to level 3
-  // Setup serial port
-  Serial.begin(9600);
-  // Make sure there's PLENTY of space... just because
-  inputCode.reserve(32);
-  // Determine a Baseline Threshold
-  setThreshold();
-  // Set LED Segment
-  ledsegment.display("go", false, false, 2);
-  // Flash LED
-  flashLED();
-  ledsegment.clearScreen();
-}
-
-void loop() {
-  /*****************************************************************************
-   * Main Function:
-   * Iteratively accept key inputs, validate them against the static `keyCode`.
-   * Iteratively "listens" for knock sensor input.
-   ****************************************************************************/
+bool caseState_keypad(void) {
+  // Handle the Keypad Operations and Move to Next State When Appropriate
+  bool result = false;
   char key = keypad.getKey();
-  byte knockMx = analogRead(knockPin);
-  static uint8_t lastBinary, newBinary;
-  
-  newBinary = readBinarySwitches();
-  if (newBinary != lastBinary) {
-    lastBinary = newBinary;
-    Serial.print("Binary Value: ");
-    Serial.println(newBinary);
-  }
+
 
   // Update key-press queue when key is valid
   if (key) {
@@ -164,58 +104,107 @@ void loop() {
 
     // Validate Input Code
     if (inputCode == keyCode) {
-      // Unlock the Box!
-      keyPadPassed = true;
+      // Move to Next State
+      result = true;
       Serial.println("Key Pin Passed!");
-      // Flash LED
-      flashLED();
     }
   }
 
-  if (keyPadPassed && !binaryInPassed) {
-    // Display First Binary Code
-    ledsegment.display("4", false, false);
-    do {
-      newBinary = readBinarySwitches();
-    } while (newBinary != 4);
-    Serial.println("First binary code presented.");
-    // Display Second Binary Code
-    ledsegment.display("13", false, false);
-    do {
-      newBinary = readBinarySwitches();
-    } while (newBinary != 13);
-    Serial.println("Second binary code presented.");
-    binaryInPassed = true;
-    Serial.println("Binary Input Passed!");
-    ledsegment.clearScreen();
-    // Flash LED
-    flashLED();
-    // Play Leading Portion of "Shave and a Haircut"
+  return result;
+}
+
+bool caseState_binaryCode(uint8_t newBinary, uint8_t lastBinary) {
+  // Handle the Binary Switches Input and Move to Next State When Appropriate
+  bool result = false;
+
+  // Display First Binary Code
+  ledSegment.display("4", false, false);
+  do {
+    newBinary = readBinarySwitches();
+  } while (newBinary != 4);
+  Serial.println("First binary code presented.");
+  // Display Second Binary Code
+  ledSegment.display("13", false, false);
+  do {
+    newBinary = readBinarySwitches();
+  } while (newBinary != 13);
+  Serial.println("Second binary code presented.");
+  result = true;
+  Serial.println("Binary Input Passed!");
+  ledSegment.clearScreen();
+
+  return result;
+}
+
+bool caseState_morse(uint32_t elapsedMs) {
+  // Send the Morse Code Message to Issue the Directional Message
+  bool result = false;
+  static uint32_t count = 0;
+
+
+  if (count == 0) {
+    // Set the Count to its Maximum Period
+    count = MORSE_PERIOD * 1000;
+
+    // Indicate we're not "listening"
+    digitalWrite(ledPin, LOW);
+    morse.send(morsePrompt);
+    digitalWrite(ledPin, HIGH);
+  }
+  if (count > elapsedMs) {
+    count -= elapsedMs;
+    Serial.println(count);
+  } else {
+    count = 0;
+  }
+  
+
+  result = keypad.getKey() == morseExpectation;
+
+
+  return result;
+}
+
+bool caseState_compass(void) {
+  // Evaluate the Heading of the Box, Look for North-Bearing
+  bool result = false;
+
+  result = abs(evaluateHeading()) < HEADING_TOLERANCE;
+
+  return result;
+}
+
+bool caseState_knock(void) {
+  // "Listen" for the Secret Knock
+  static bool knockPromptCompleted = false;
+  bool result = false;
+  byte knockMx = analogRead(knockPin);
+
+  
+  // Play Leading Portion of "Shave and a Haircut"
+  if (!knockPromptCompleted) {
     promptKnock();
     knockCount = 0; // Reset
     Serial.println("Waiting for Knock...");
+    knockPromptCompleted = true;
   }
 
   // When Keypad Passed, Count Knocks
   if (knockMx >= knockThreshold){
-    if (keyPadPassed && binaryInPassed) {
-      knockCount++;
-      Serial.println(knockCount);
-      digitalWrite(ledPin, LOW);
-      delay(200); // ms
-      digitalWrite(ledPin, HIGH);
-      // Determine a *NEW* Baseline Threshold
-      setThreshold();
-      // Negative Overflow to Access Maximum Value
-      knockResetThresholdPeriod = 0 - 1;
+    Serial.println("Knock.");
+    knockCount++;
+    Serial.println(knockCount);
+    digitalWrite(ledPin, LOW);
+    delay(200); // ms
+    digitalWrite(ledPin, HIGH);
+    // Determine a *NEW* Baseline Threshold
+    setThreshold();
+    // Negative Overflow to Access Maximum Value
+    knockResetThresholdPeriod = 0 - 1;
 
-      // Validate Knock Count
-      if (knockCount >= 2) {
-        unlock();
-      }
-    } else {
-      setThreshold();
-      Serial.println("Knock.");
+    // Validate Knock Count
+    if (knockCount >= 2) {
+      unlock();
     }
   }
 
@@ -228,4 +217,120 @@ void loop() {
     // Decrement Counter
     knockResetThresholdPeriod--;
   }
+
+  return result;
+}
+
+void setup() {
+  /*****************************************************************************
+   * Setup Function:
+   * Prepare the System.
+   ****************************************************************************/
+  // Setup Pins
+  pinMode(ledPin, OUTPUT);
+  pinMode(solenoidPin, OUTPUT);
+  pinMode(binary1Pin, INPUT);
+  pinMode(binary2Pin, INPUT);
+  pinMode(binary4Pin, INPUT);
+  pinMode(binary8Pin, INPUT);
+  // Setup Servo
+  knockServo.attach(servoPin);
+  knockServo.write(0);
+  ledSegment.init();           // Initializes the display
+  ledSegment.setBrightness(3); // Set brightness to level 3
+  // Setup serial port
+  Serial.begin(9600);
+  // Initialize Device
+  Serial.println("Initializing I2C devices...");
+  /* Initialise the sensor */
+  while (!compass.begin())
+  {
+    Serial.println("Could not find a valid 5883 sensor, check wiring!");
+    delay(500);
+  }
+  evaluateHeading();
+  // Make sure there's PLENTY of space... just because
+  inputCode.reserve(32);
+  // Determine a Baseline Threshold
+  setThreshold();
+  // Set LED Segment
+  ledSegment.display("go", false, false, 2);
+  // Flash LED
+  flashLED();
+  ledSegment.clearScreen();
+}
+
+void loop() {
+  /*****************************************************************************
+   * Main Function:
+   * Iteratively accept key inputs, validate them against the static `keyCode`.
+   * Iteratively "listens" for knock sensor input.
+   ****************************************************************************/
+  static lock_stage state = INIT;
+  static uint8_t lastBinary, newBinary;
+  static long now, lastTime;
+  lock_stage nextState;
+  long timeDelta;
+
+  // Read Binary Inputs, Always
+  if ((newBinary = readBinarySwitches()) != lastBinary) {
+    lastBinary = newBinary;
+    Serial.print("Binary Value: ");
+    Serial.println(newBinary);
+  }
+
+  now = millis();
+  timeDelta = now - lastTime;
+  
+  //---------- FINITE STATE MACHINE
+  switch (state) {
+
+    case INIT:
+      nextState = KEYPAD;
+      break;
+    
+    case KEYPAD:
+      if (caseState_keypad()) {
+        nextState = BINARY_CODE;
+      }
+      break;
+    
+    case BINARY_CODE:
+      if (caseState_binaryCode(newBinary, lastBinary)) {
+        nextState = MORSE;
+      }
+      break;
+    
+    case MORSE:
+      if (caseState_morse((uint32_t)timeDelta)) {
+        nextState = COMPASS;
+      }
+      break;
+    
+    case COMPASS:
+      if (caseState_compass()) {
+        nextState = KNOCK;
+      }
+      break;
+    
+    case KNOCK:
+      if (caseState_knock()) {
+        nextState = COMPLETE;
+      }
+      break;
+    
+
+    case COMPLETE:
+      unlock();
+
+  }
+  //----------- END FINITE STATE MACHINE
+
+  if (state != nextState) {
+    Serial.println("Advancing Lock Stage!");
+    flashLED();
+  }
+
+  lastTime = now;
+  state = nextState;
 }

@@ -23,6 +23,8 @@ View more information on my blog: https://blog.stanleysolutionsnw.com/a-differen
 | Matrix Keypad            | https://a.co/d/iopOzlX (Amazon) |                                                         |
 | LED Mounts               | https://a.co/d/decipzy (Amazon) |                                                         |
 | Power Transistor         | https://a.co/d/66PgUm3 (Amazon) | Ensure Transistor is large enough for solenoid load.    |
+| Piezo Electric Beeper    | https://a.co/d/10LGunH (Amazon) |                                                         |
+| Compass Magnetometer     | https://a.co/d/c4yp0xJ (Amazon) |                                                         |
 
 > ***NOTE:***
 > 
