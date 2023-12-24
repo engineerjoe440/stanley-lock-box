@@ -13,5 +13,6 @@ enum lock_stage {
     MORSE,
     COMPASS,
     KNOCK,
+    UNLOCK,
     COMPLETE
 };

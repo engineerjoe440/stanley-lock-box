@@ -12,41 +12,19 @@
 #include <cww_MorseTx.h>
 #include <DFRobot_QMC5883.h>
 #include "common.h"
+#include "keypad.h"
 #include "fsm.h"
 
-const byte ROWS = 4; //four rows
-const byte COLS = 4; //four columns
-
-//define the symbols on the buttons of the keypads
-char keys[ROWS][COLS] = {
-  {'1','4','7','*'},
-  {'2','5','8','0'},
-  {'3','6','9','#'},
-  {'A','B','C','D'}
-};
-
-// TODO: Verify these pinouts
-byte pin_rows[ROWS] = {3, 2, 8, 0}; //connect to the row pinouts of the keypad
-byte pin_column[COLS] = {7, 6, 5, 4}; //connect to the column pinouts of the keypad
-
-Keypad keypad = Keypad( makeKeymap(keys), pin_rows, pin_column, ROWS, COLS );
-
-String inputCode = "   "; // Start with three spaces as empty characters
+Keypad keypad = Keypad( makeKeymap(keys), pin_rows, pin_column, KEYPAD_ROWS, KEYPAD_COLUMNS );
 
 byte knockThreshold = 200;
-uint8_t knockCount = 0;
-uint32_t knockResetThresholdPeriod = 0;
 
 Servo knockServo;
 
 // Instantiation and pins configurations
-// Pin 3 - > DIO
-// Pin 2 - > CLK
-TM1637 ledSegment(52, 53);
+TM1637 ledSegment(ledSegmentDIO, ledSegmentCLK);
 
-DFRobot_QMC5883 compass(&Wire, /*I2C addr*/QMC5883_ADDRESS);
-
-#define CW_SPEED 15
+DFRobot_QMC5883 compass(&Wire, /*I2C addr*/ QMC5883_ADDRESS);
 
 cww_MorseTx morse(morseBeepPin, CW_SPEED);
 
@@ -92,9 +70,16 @@ float evaluateHeading(void) {
 
 bool caseState_keypad(void) {
   // Handle the Keypad Operations and Move to Next State When Appropriate
+  static String inputCode = "   "; // Start with three spaces as empty characters
+  static bool reserved = false;
   bool result = false;
   char key = keypad.getKey();
 
+  if (!reserved) {
+    reserved = true;
+    // Make sure there's PLENTY of space... just because
+    inputCode.reserve(32);
+  }
 
   // Update key-press queue when key is valid
   if (key) {
@@ -167,9 +152,17 @@ bool caseState_morse(uint32_t elapsedMs) {
 
 bool caseState_compass(void) {
   // Evaluate the Heading of the Box, Look for North-Bearing
-  bool result = false;
+  static float headings[] = {90, 90, 90, 90, 90, 90, 90};
+  bool result = true;
+  int i = 0;
 
-  result = abs(evaluateHeading()) < HEADING_TOLERANCE;
+  for (i = 0; i < 5; i++) {
+    headings[i] = headings[i+1];
+  }
+  headings[5] = evaluateHeading();
+  for (i = 0; i < 6; i++) {
+    result = result && bool(abs(headings[i]) < HEADING_TOLERANCE);
+  }
 
   return result;
 }
@@ -177,6 +170,8 @@ bool caseState_compass(void) {
 bool caseState_knock(void) {
   // "Listen" for the Secret Knock
   static bool knockPromptCompleted = false;
+  static uint32_t knockResetThresholdPeriod = 0;
+  static uint8_t knockCount = 0;
   bool result = false;
   byte knockMx = analogRead(knockPin);
 
@@ -203,19 +198,19 @@ bool caseState_knock(void) {
     knockResetThresholdPeriod = 0 - 1;
 
     // Validate Knock Count
-    if (knockCount >= 2) {
-      unlock();
-    }
+    result = knockCount >= 2;
   }
 
   // Update Threshold On Specific Period After Last Knock
-  if (knockResetThresholdPeriod == 1) {
-    // Determine a *NEW* Baseline Threshold
-    setThreshold();
-    knockResetThresholdPeriod = 0;
-  } else if (knockResetThresholdPeriod > 0) {
-    // Decrement Counter
-    knockResetThresholdPeriod--;
+  if (!result) {
+    if (knockResetThresholdPeriod == 1) {
+      // Determine a *NEW* Baseline Threshold
+      setThreshold();
+      knockResetThresholdPeriod = 0;
+    } else if (knockResetThresholdPeriod > 0) {
+      // Decrement Counter
+      knockResetThresholdPeriod--;
+    }
   }
 
   return result;
@@ -249,8 +244,6 @@ void setup() {
     delay(500);
   }
   evaluateHeading();
-  // Make sure there's PLENTY of space... just because
-  inputCode.reserve(32);
   // Determine a Baseline Threshold
   setThreshold();
   // Set LED Segment
@@ -315,13 +308,19 @@ void loop() {
     
     case KNOCK:
       if (caseState_knock()) {
-        nextState = COMPLETE;
+        nextState = UNLOCK;
       }
       break;
+  
+    case UNLOCK:
+     unlock();
+     nextState = COMPLETE;
+     break;
     
 
     case COMPLETE:
-      unlock();
+      // Do Nothing
+      break;
 
   }
   //----------- END FINITE STATE MACHINE

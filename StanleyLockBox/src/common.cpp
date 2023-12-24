@@ -11,8 +11,9 @@ void unlock() {
   Serial.println("Unlocking Box!");
   // Perform the unlocking operation!
   digitalWrite(solenoidPin, HIGH);
-  delay(60UL * 1000); // Delay 60 seconds before locking again
+  delay(UNLATCH_PERIOD * 1000); // Delay 60 seconds before locking again
   digitalWrite(solenoidPin, LOW);
+  Serial.println("Releasing Latch.");
 }
 
 void flashLED() {

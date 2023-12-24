@@ -18,9 +18,14 @@
 #define binary4Pin 22
 #define binary8Pin 23
 #define morseBeepPin 49
+#define ledSegmentDIO 52
+#define ledSegmentCLK 53
+
+// Other Definitions
 #define CW_SPEED 15
-#define HEADING_TOLERANCE 15
+#define HEADING_TOLERANCE 20
 #define MORSE_PERIOD 20 // seconds
+#define UNLATCH_PERIOD 20UL // seconds
 
 const String keyCode = "1B5";
 const char morsePrompt[] = "two";
