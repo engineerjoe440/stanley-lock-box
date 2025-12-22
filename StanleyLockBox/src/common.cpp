@@ -1,6 +1,6 @@
 /*******************************************************************************
  * StanleyLockBox
- * Joe Stanley | Stanley Solutions | 2023
+ * Joe Stanley | Stanley Solutions | 2025
  ******************************************************************************/
 
 #include <Arduino.h>
@@ -27,6 +27,21 @@ void flashLED() {
   digitalWrite(ledPin, HIGH); // Leave On!
 }
 
+void setRGB(uint8_t r, uint8_t g, uint8_t b) {
+  // Set the RGB LED to the Specified Color
+  analogWrite(rgbLEDPinR, r);
+  analogWrite(rgbLEDPinG, g);
+  analogWrite(rgbLEDPinB, b);
+}
+
+void setRGBHex(uint32_t hexColor) {
+  // Set the RGB LED to the Specified Hex Color
+  uint8_t r = (hexColor >> 16) & 0xFF;
+  uint8_t g = (hexColor >> 8) & 0xFF;
+  uint8_t b = hexColor & 0xFF;
+  setRGB(r, g, b);
+}
+
 uint8_t readBinarySwitches() {
   // Read Switches
   uint8_t result = 0;
@@ -37,3 +52,16 @@ uint8_t readBinarySwitches() {
   return result;
 }
 
+bool timedOut(uint32_t numMillis, uint32_t &startTime) {
+  // Run Until Timeout Period has Elapsed
+  uint32_t currentTime = millis();
+  if (startTime == 0) {
+    startTime = currentTime;
+  }
+  return (currentTime - startTime) >= numMillis;
+}
+
+bool inRange(uint16_t value, uint16_t target, uint16_t tolerance) {
+  // Check if a Value is within a Target +/- Tolerance
+  return (value >= (target - tolerance)) && (value <= (target + tolerance));
+}

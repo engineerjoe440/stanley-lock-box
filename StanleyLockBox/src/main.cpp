@@ -1,6 +1,6 @@
 /*******************************************************************************
  * StanleyLockBox
- * Joe Stanley | Stanley Solutions | 2023
+ * Joe Stanley | Stanley Solutions | 2025
  ******************************************************************************/
 
 #include <Arduino.h>
@@ -14,6 +14,7 @@
 #include "common.h"
 #include "keypad.h"
 #include "fsm.h"
+#include "wireColors.h"
 
 Keypad keypad = Keypad( makeKeymap(keys), pin_rows, pin_column, KEYPAD_ROWS, KEYPAD_COLUMNS );
 
@@ -121,11 +122,24 @@ bool caseState_binaryCode(uint8_t newBinary, uint8_t lastBinary) {
   return result;
 }
 
-bool caseState_morse(uint32_t elapsedMs) {
+bool caseState_morse(uint32_t elapsedMs, wireColor_t wireToCut) {
   // Send the Morse Code Message to Issue the Directional Message
-  bool result = false;
+  static bool signaled = false;
   static uint32_t count = 0;
+  const char* morsePrompt;
+  bool result = false;
+  wireColor_t cutWire;
 
+  if (wireToCut != NONE) {
+    if (!signaled) {
+      signaled = true;
+      Serial.print("Signalling that wire must be cut: ");
+      Serial.println(wireColorNames[wireToCut]);
+    }
+    morsePrompt = wireColorNames[wireToCut];
+  } else {
+    morsePrompt = "two";
+  }
 
   if (count == 0) {
     // Set the Count to its Maximum Period
@@ -144,9 +158,115 @@ bool caseState_morse(uint32_t elapsedMs) {
     count = 0;
   }
   
+  if (wireToCut != NONE) {
+    // Validate that the Correct Wire was Cut
+    result = isWireCut(wireToCut);
+  } else {
+    result = keypad.getKey() == morseExpectation;
+  }
 
-  result = keypad.getKey() == morseExpectation;
 
+  return result;
+}
+
+bool caseState_rgbLED(void) {
+  static String inputCode = "   "; // Start with three spaces as empty characters
+  static bool reserved = false;
+  static uint32_t colorTime, watchdogTime;
+  bool result = false;
+  char key;
+  uint8_t r, g, b;
+
+  if (!reserved) {
+    reserved = true;
+    // Make sure there's PLENTY of space... just because
+    inputCode.reserve(32);
+  }
+
+  // Set the RGB LED to a Specific Color to Show User What they Need to Set
+  setRGBHex(hanPurple);
+  delay(5000); // ms
+  setRGB(0, 0, 0);
+
+  Serial.println("Ready for Red Input:");
+  while (!timedOut(rgbEntryDelay, colorTime) && !timedOut(watchdogTimeout, watchdogTime)) {
+    key = keypad.getKey();
+    // Update key-press queue when key is valid
+    if (key) {
+      // Trim off the first Character and add new key
+      inputCode = inputCode.substring(1, 3) + key;
+      Serial.print("Input Code: ");
+      Serial.print(inputCode);
+      Serial.print("\t  Red Input: ");
+      r = inputCode.toInt();
+      Serial.println(r);
+      setRGB(r, 0, 0);
+      colorTime = 0;
+    }
+    if (inputCode == "   ") {
+      colorTime = 0;
+    }
+  }
+  inputCode = "   ";
+  colorTime = 0;
+  flashLED();
+
+  Serial.println("Ready for Green Input:");
+  while (!timedOut(rgbEntryDelay, colorTime) && !timedOut(watchdogTimeout, watchdogTime)) {
+    key = keypad.getKey();
+    // Update key-press queue when key is valid
+    if (key) {
+      // Trim off the first Character and add new key
+      inputCode = inputCode.substring(1, 3) + key;
+      Serial.print("Input Code: ");
+      Serial.print(inputCode);
+      Serial.print("\t  Green Input: ");
+      g = inputCode.toInt();
+      Serial.println(g);
+      setRGB(r, g, 0);
+      colorTime = 0;
+    }
+    if (inputCode == "   ") {
+      colorTime = 0;
+    }
+  }
+  inputCode = "   ";
+  colorTime = 0;
+  flashLED();
+
+  Serial.println("Ready for Blue Input:");
+  while (!timedOut(rgbEntryDelay, colorTime) && !timedOut(watchdogTimeout, watchdogTime)) {
+    key = keypad.getKey();
+    // Update key-press queue when key is valid
+    if (key) {
+      // Trim off the first Character and add new key
+      inputCode = inputCode.substring(1, 3) + key;
+      Serial.print("Input Code: ");
+      Serial.print(inputCode);
+      Serial.print("\t  Blue Input: ");
+      b = inputCode.toInt();
+      Serial.println(b);
+      setRGB(r, g, b);
+      colorTime = 0;
+    }
+    if (inputCode == "   ") {
+      colorTime = 0;
+    }
+  }
+  inputCode = "   ";
+  colorTime = 0;
+  watchdogTime = 0;
+
+  // Validate Input Code
+  result = inRange(r, hanPurple_r, 10) &&
+    inRange(g, hanPurple_g, 10) &&
+    inRange(b, hanPurple_b, 10);
+  if (result) {
+    Serial.println("RGB Input Passed!");
+    setRGB(0, 0, 0);
+  } else {
+    Serial.println("RGB Input Failed.");
+  }
 
   return result;
 }
@@ -231,11 +351,21 @@ void setup() {
   pinMode(binary2Pin, INPUT);
   pinMode(binary4Pin, INPUT);
   pinMode(binary8Pin, INPUT);
+  pinMode(rgbLEDPinR, OUTPUT);
+  pinMode(rgbLEDPinG, OUTPUT);
+  pinMode(rgbLEDPinB, OUTPUT);
+  pinMode(redWirePin, INPUT_PULLUP);
+  pinMode(whiteWirePin, INPUT_PULLUP);
+  pinMode(greenWirePin, INPUT_PULLUP);
   // Setup Servo
   knockServo.attach(servoPin);
   knockServo.write(0);
   ledSegment.init();           // Initializes the display
   ledSegment.setBrightness(3); // Set brightness to level 3
+  // Indicate RGB
+  digitalWrite(rgbLEDPinR, HIGH);
+  digitalWrite(rgbLEDPinG, LOW);
+  digitalWrite(rgbLEDPinB, LOW);
   // Setup serial port
   Serial.begin(9600);
   // Initialize Device
@@ -246,15 +376,29 @@ void setup() {
     Serial.println("Could not find a valid 5883 sensor, check wiring!");
     delay(500);
   }
+  delay(500);
   evaluateHeading();
   Serial.println();
   // Determine a Baseline Threshold
   setThreshold();
   // Set LED Segment
   ledSegment.display("go", false, false, 2);
+  // Indicate RGB
+  digitalWrite(rgbLEDPinR, LOW);
+  digitalWrite(rgbLEDPinG, HIGH);
+  digitalWrite(rgbLEDPinB, LOW);
   // Flash LED
   flashLED();
+  // Indicate RGB
+  digitalWrite(rgbLEDPinR, LOW);
+  digitalWrite(rgbLEDPinG, LOW);
+  digitalWrite(rgbLEDPinB, HIGH);
   ledSegment.clearScreen();
+  delay(500);
+  // Indicate RGB
+  digitalWrite(rgbLEDPinR, LOW);
+  digitalWrite(rgbLEDPinG, LOW);
+  digitalWrite(rgbLEDPinB, LOW);
 }
 
 void loop() {
@@ -268,6 +412,7 @@ void loop() {
   static long now, lastTime;
   static int direction = -1;
   static int ledPwmValue = 255;
+  static wireColor_t wireToCut = selectCutWire();
   lock_stage nextState = state;
   long timeDelta;
 
@@ -301,7 +446,13 @@ void loop() {
       break;
     
     case MORSE:
-      if (caseState_morse((uint32_t)timeDelta)) {
+      if (caseState_morse((uint32_t)timeDelta, wireToCut)) {
+        nextState = RGB_SET;
+      }
+      break;
+
+    case RGB_SET:
+      if (caseState_rgbLED()) {
         nextState = COMPASS;
       }
       break;

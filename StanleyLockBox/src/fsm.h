@@ -1,6 +1,6 @@
 /*******************************************************************************
  * StanleyLockBox
- * Joe Stanley | Stanley Solutions | 2023
+ * Joe Stanley | Stanley Solutions | 2025
  ******************************************************************************/
 
 #include <Arduino.h>
@@ -11,6 +11,7 @@ enum lock_stage {
     KEYPAD,
     BINARY_CODE,
     MORSE,
+    RGB_SET,
     COMPASS,
     KNOCK,
     UNLOCK,
@@ -22,6 +23,7 @@ const char* stateNames[] = {
     IDNAME(KEYPAD),
     IDNAME(BINARY_CODE),
     IDNAME(MORSE),
+    IDNAME(RGB_SET),
     IDNAME(COMPASS),
     IDNAME(KNOCK),
     IDNAME(UNLOCK),
