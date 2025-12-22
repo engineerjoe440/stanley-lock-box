@@ -62,8 +62,8 @@ void setThreshold() {
 float evaluateHeading(void) {
   sVector_t mag = compass.readRaw();
   compass.getHeadingDegrees();
-  Serial.print("Heading (degrees): ");
-  Serial.println(mag.HeadingDegress);
+  Serial.print("\rHeading (degrees): ");
+  Serial.print(mag.HeadingDegress);
 
   return mag.HeadingDegress;
 }
@@ -138,7 +138,8 @@ bool caseState_morse(uint32_t elapsedMs) {
   }
   if (count > elapsedMs) {
     count -= elapsedMs;
-    Serial.println(count);
+    Serial.print("\rMilliseconds Remaining Before Prompt: ");
+    Serial.print(count);
   } else {
     count = 0;
   }
@@ -216,6 +217,8 @@ bool caseState_knock(void) {
   return result;
 }
 
+void(* resetFunc) (void) = 0;//declare reset function at address 0
+
 void setup() {
   /*****************************************************************************
    * Setup Function:
@@ -244,6 +247,7 @@ void setup() {
     delay(500);
   }
   evaluateHeading();
+  Serial.println();
   // Determine a Baseline Threshold
   setThreshold();
   // Set LED Segment
@@ -262,13 +266,15 @@ void loop() {
   static lock_stage state = INIT;
   static uint8_t lastBinary, newBinary;
   static long now, lastTime;
-  lock_stage nextState;
+  static int direction = -1;
+  static int ledPwmValue = 255;
+  lock_stage nextState = state;
   long timeDelta;
 
   // Read Binary Inputs, Always
   if ((newBinary = readBinarySwitches()) != lastBinary) {
     lastBinary = newBinary;
-    Serial.print("Binary Value: ");
+    Serial.print("\nBinary Value: ");
     Serial.println(newBinary);
   }
 
@@ -319,14 +325,28 @@ void loop() {
     
 
     case COMPLETE:
-      // Do Nothing
+      // Fade LED
+      analogWrite(ledPin, ledPwmValue);
+      ledPwmValue += direction;
+      if (ledPwmValue == 0) {
+        direction = 1;
+      } else if (ledPwmValue == 255) {
+        direction = -1;
+      }
+      delay(10);
+
+      // Reset if '#' Key is Pressed
+      if (keypad.getKey() == '#') {
+        resetFunc();
+      }
       break;
 
   }
   //----------- END FINITE STATE MACHINE
 
   if (state != nextState) {
-    Serial.println("Advancing Lock Stage!");
+    Serial.print("\nAdvancing Lock Stage!  --> ");
+    Serial.println(stateNames[nextState]);
     flashLED();
   }
 

@@ -9,16 +9,16 @@
 #include <Servo.h>
 
 // Constant Pin Definitions
-#define ledPin 13
-#define solenoidPin 12
+#define ledPin 10
+#define solenoidPin 11
 #define servoPin 9
-#define knockPin 0
-#define binary1Pin 24
-#define binary2Pin 25
-#define binary4Pin 22
-#define binary8Pin 23
-#define morseBeepPin 49
-#define ledSegmentDIO 52
+#define knockPin A3
+#define binary1Pin 43
+#define binary2Pin 49
+#define binary4Pin 45
+#define binary8Pin 47
+#define morseBeepPin 32
+#define ledSegmentDIO 51
 #define ledSegmentCLK 53
 
 // Other Definitions
@@ -35,4 +35,3 @@ const char morseExpectation = '2';
 void unlock(void);
 void flashLED(void);
 uint8_t readBinarySwitches(void);
-

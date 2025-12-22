@@ -16,3 +16,14 @@ enum lock_stage {
     UNLOCK,
     COMPLETE
 };
+#define IDNAME(name) #name
+const char* stateNames[] = {
+    IDNAME(INIT),
+    IDNAME(KEYPAD),
+    IDNAME(BINARY_CODE),
+    IDNAME(MORSE),
+    IDNAME(COMPASS),
+    IDNAME(KNOCK),
+    IDNAME(UNLOCK),
+    IDNAME(COMPLETE)
+};
