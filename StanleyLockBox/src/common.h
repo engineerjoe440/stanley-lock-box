@@ -12,7 +12,7 @@
 #define randomSeedPin A0
 #define ledPin A5
 #define solenoidPin 63
-#define servoPin A1
+#define servoPin 12
 #define knockPin A3
 #define binary1Pin 43
 #define binary2Pin 49

@@ -128,7 +128,6 @@ bool caseState_morse(uint32_t elapsedMs, wireColor_t wireToCut) {
   static uint32_t count = 0;
   const char* morsePrompt;
   bool result = false;
-  wireColor_t cutWire;
 
   if (wireToCut != NONE) {
     if (!signaled) {
@@ -360,6 +359,11 @@ void setup() {
   // Setup Servo
   knockServo.attach(servoPin);
   knockServo.write(0);
+  delay(500);
+  knockServo.write(90);
+  delay(500);
+  knockServo.write(0);
+  // Setup LED Segment
   ledSegment.init();           // Initializes the display
   ledSegment.setBrightness(3); // Set brightness to level 3
   // Indicate RGB
